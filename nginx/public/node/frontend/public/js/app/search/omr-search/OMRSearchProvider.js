@@ -8,6 +8,7 @@ import IncrementalClientSideLoader from "utils/IncrementalClientSideLoader";
 import SearchResultHeadingView from "../SearchResultHeadingView";
 import NeumeGalleryView from "./NeumeGalleryView";
 import ContourChoiceView from "./ContourChoiceView";
+import IntervalChoiceView from "./IntervalChoiceView";
 import InputView from "./InputView";
 import ResultView from "./ResultView";
 
@@ -35,7 +36,7 @@ export default Marionette.Object.extend({
             fields: [
                 {
                     name: 'Neume',
-                    type: 'neumes'
+                    type: 'neume_names'
                 }
             ]
         },
@@ -44,11 +45,11 @@ export default Marionette.Object.extend({
             fields: [
                 {
                     name: 'Pitch',
-                    type: 'pnames'
+                    type: 'pitch_names'
                 },
                 {
                     name: 'Pitch (invariant)',
-                    type: 'pnames-invariant'
+                    type: 'pitch_names_invariant'
                 },
                 {
                     name: 'Contour',
@@ -68,7 +69,7 @@ export default Marionette.Object.extend({
 
         var manuscriptModel = options.manuscript;
 
-        this.manuscript = manuscriptModel.get('siglum_slug');
+        this.manuscript = manuscriptModel.get('id');
         this.neumeExemplars = new Backbone.Collection(manuscriptModel.get('neume_exemplars'));
 
         this.fields = [];
@@ -146,9 +147,12 @@ export default Marionette.Object.extend({
 
     getSearchMetadata: function ()
     {
+        var numFound = this.results.numFound || 0;
         return {
             fieldName: this.field.name,
-            query: this.query
+            query: this.query,
+            displayedQuery: this.query,
+            numFound: numFound
         };
     },
 
@@ -180,9 +184,17 @@ export default Marionette.Object.extend({
             var contourChoices = new ContourChoiceView();
             inputView.listenTo(contourChoices, 'use:contour', function(newQuery)
             {
-                inputView.insertSearchString(newQuery, false);
+                inputView.insertSearchString(newQuery, true);
             });
             regions.searchHelper.show(contourChoices);
+        }
+        else if (field.type === 'intervals'){
+            var intervalChoices = new IntervalChoiceView();
+            inputView.listenTo(intervalChoices, 'use:interval', function(newQuery)
+            {
+                inputView.insertSearchString(newQuery, true);
+            });
+            regions.searchHelper.show(intervalChoices);
         }
         else
         {

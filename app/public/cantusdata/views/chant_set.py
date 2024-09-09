@@ -25,12 +25,12 @@ CHANT_FIELDS = [
     "position",
     "mode",
     "differentia",
+    "differentiae_database",
     "finalis",
     "incipit",
     "full_text",
     "full_text_ms",
     "volpiano",
-    "concordances",
     "cdb_uri",
 ]
 

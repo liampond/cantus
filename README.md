@@ -24,13 +24,15 @@ git submodule update --init
 We use [Docker Compose](https://docs.docker.com/compose/) to containerize each service and keep all our dependencies in order. Cantus Ultimus is compatible with Docker Compose > 2.8.
 
 ### The `.env` file
-The build process relies on environment variables specified in the `.env` file, which is located at the root of the repository. 
+The build process relies on environment variables specified in an `.env` file located at the root of the repository. A sample of this file, `.env.sample`, is provided.
 
-You must make two modifications to this file before the docker containers will build.  Both `POSTGRES_PASSWORD` and `RABBIT_PASSWORD` should be uncommented and set with secure passwords.
+Make a copy of `.env.sample` and name it `.env`. You must make two modifications to this file before the docker containers will build.  Both `POSTGRES_PASSWORD` and `RABBIT_PASSWORD` should be uncommented and set with secure passwords.
+
+Before launching the site, ensure that the `DEVELOPMENT` variable is set correctly. For development, it should be set to `True`; for deployment, it should be `False`. This variable configures the application's debug settings. Deploying the website with `DEVELOPMENT=True` would leak debugging information on a live server and use Django's development server rather than gunicorn and must be avoided.
 
 #### Handling `postgres` authentication issues
 
-When the containers are launched, a volume, `data/postgres`, will be created. When the `POSTGRES_PASSWORD` is changed between builds of the docker containers, the `postgres` container might run into an authentication problem because of the existing volume. If you run into that problem, make sure to remove the volume and re-launch the containers
+When the containers are launched, a directory at `./data/postgres`, will be created and mounted to the `postgres` container. When the `POSTGRES_PASSWORD` is changed between builds of the docker containers, the `postgres` container might run into an authentication problem because of the existing volume. If you run into that problem, make sure to remove the volume and re-launch the containers
 
 ```
 docker rm -v <container-id>
@@ -39,7 +41,7 @@ rm -r data
 
 ### Launch in development
 
-In the `.env` file, the `PORT` variable is set to `8000` (development) by default. This will turn on Django's debug mode, showing detailed traces when Django encounters errors, as well as turn off security settings that might stop you from accessing the site locally. In production, this should be set to `80`.
+In the `.env.sample` file, the `DEVELOPMENT` variable is set to `False` by default. For local development, set this to `True` to turn on Django's debug mode, which allows you to access detailed traces when Django encounters errors. For deployment on a server, this should remain set to `False`.
 
 > **Windows Users:** Make sure `/app/django-config.sh` has `LF` line endings before launching. This file gets copied over into an Ubuntu container and will break the process if git automatically checked out the file using Windows (`CRLF`) line endings.
 
@@ -47,23 +49,23 @@ Execute the following commands from the root directory of the repo:
 
 ```sh
 # Build the images and launch the containers (this will take a while)
-$ docker-compose build
-$ docker-compose up -d
+$ docker compose build
+$ docker compose up -d  
 ```
 
-When testing your changes, include the `--build` flag to see your changes propagate into the containers:
+When testing subsequent changes, you can do this in one step by including the `--build` flag:
 
 ```
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
-After the building process completes (10 to 30 minutes), the site should be available on http://localhost:8000/ in your host machine.
+After the build process completes, the site should be available on http://localhost:8000/ in your host machine.
 
 By default, Cantus Ultimus works in the following way:
 
 ```mermaid
 stateDiagram-v2
-[*] --> nginx: Any HTTP request
+[*] --> nginx: Any request to port 8000
 nginx --> StaticFile: Serve static files directly
 nginx --> gunicorn: Forward webapp requests to port 8001
 gunicorn --> django: Serve content from webapp
@@ -71,17 +73,47 @@ django --> postgres: Use as default database backend
 django --> solr: Bind django database "signals" to solr
 ```
 
+
+Python dependencies are managed with the `poetry` package. Although you don't necessarily need to create a local environment with these dependencies (they are installed inside the `app` container during the build process), it may nevertheless be useful (for example, for type checking). To do so, install [`poetry`](https://python-poetry.org/) on your development machine and use it to install the project's dependencies into a virtual environment.
+
+Cantus Ultimus has a few python dependencies that are for development only (for example, the code formatter `black`). These are located in the `dev` group (see the `pyproject.toml` file). To install these for local development, use command: `poetry install --with dev`.
+
 #### Enabling live changes with django's `runserver`
 
-During development, it is often useful to replace `gunicorn` with the default `django` web server, so that modifying the source code results in live changes in the website. This is done by default in `django-config.sh`. If you need to test `gunicorn` during development, edit the if statement in this file.
+
+### Database migrations
+
+Whenever changes are made to database models, they need to be applied to the PostgreSQL database. This occurs through Django's migrations.
+
+If, during development, you make a change to any models, build and run the containers, as above. Then, enter the command line in the `app` container:
+
+```sh
+$ docker compose exec -it app bash
+```
+
+Then, run the `makemigrations` command:
+
+```sh
+$ python manage.py makemigrations
+```
+
+Migrations will then be created in the `./app/public/cantusdata/migrations/` folder. Commit these migrations and include in the pull request that includes the model changes. 
+
+You will also need to apply these migrations to the database to your development database and, once these model changes are deployed to servers, to staging, production, and any other remote databases. To apply the changes, enter the command line in the `app` container as before and run the `migrate` command:
+
+```sh
+$ python manage.py migrate
+```
+
+Note that migrations will also need to be applied to a newly instantiated database using the `migrate` command.
 
 ### Launch in production
 
-From the Compute Canada VM, follow the same instructions as above, only replace `docker-compose` with `docker compose` and make sure to keep `PORT=80` in the `.env` file.
+From the Compute Canada VM, follow the same instructions as above, making sure `DEVELOPMENT=False` is in the `.env` file.
 
-## Initialize a newly launched website
+## Initialize a newly launched website (for development or deployment)
 
-A freshly initialized instance of the website does not have an admin account. Addititionally, the databases of Manuscripts, Chants, and Folios are not populated.
+A freshly initialized instance of the website does not have an admin account or any data in the database.
 
 A few commands will create an admin account and populate the database.
 
@@ -100,26 +132,21 @@ Password (again):
 Superuser created successfully.
 ```
 
-Using your admin credentials, verify that you are able to log into the admin django site, which should be located in http://localhost:8000/admin/
+Using your admin credentials, verify that you are able to log into the admin django site, which should be located at `/admin/`. 
 
 ![image](https://user-images.githubusercontent.com/7258463/101060564-8be1e500-355d-11eb-887f-5af65b50ba13.png)
 
-When navigating through any of the tables in the admin interface (e.g., Manuscripts, Concordances, and Chants), they will appear to be empty.
+When initializing the site, remember to apply migrations to the database (see the "Database Migrations" section above).
 
-We can pre-populate the Concordances, Manuscripts, and Chants from the information available in the [Cantus Database](https://cantusdatabase.org/).
+When navigating through any of the tables in the admin interface (e.g., Manuscripts,  and Chants), they will appear to be empty.
+
+We can populate the Manuscripts and Chants from the information available in the [Cantus Database](https://cantusdatabase.org/).
 
 The scripts to populate the database are included in the repository. Head back to the terminal where you created the admin user account.
 
-Import the concordances, manuscripts, and chants
+Import the manuscripts and chants
 
 ```sh
-# Import the concordances
-$ docker-compose exec app python manage.py import_data concordances
-Deleting old concordances data...
-Successfully imported 12 concordances into database.
-Waiting for Solr to finish...
-Done.
-
 # Import the manuscripts
 $ docker-compose exec app python manage.py import_data manuscripts
 Deleting old manuscripts data...
@@ -141,7 +168,8 @@ An additional command is included to import chants associated with a specific ma
 ```sh
 $ docker-compose exec app python manage.py import_data chants --manuscript-id MANUSCRIPT_ID
 ```
-however, this process can already be done using the user interface. We recommend using the user interface from this point onward.
+
+This process can also be done using the user interface (recommended; see below).
 
 ## Adding manuscripts and chants using the admin user interface
 
@@ -236,6 +264,17 @@ It may take several minutes for the backend of the website to deploy the changes
 The user will be able to know when that process has concluded by revisiting the admin interface. A complete mapping process will activate the `Is mapped` flag in the corresponding manuscript.
 
 At this point, the manuscript should be searchable within the main website.
+
+### Indexing MEI and activating OMR search
+
+To add OMR search functionality to a manuscript, a set of MEI 5 files for the manuscript needs to be added to the [production MEI files repository](https://github.com/DDMAL/production_mei_files). Add these files in a folder named with the Cantus Database source ID for the manuscript. The mei files must be named by the following convention: *_[folio_number].mei. Once these are committed to the main branch of the production MEI files repo, they can be pulled with the rest of the Cantus Ultimus code base (the production MEI files repository is a submodule of the CU repo).
+
+In the running `app` container, run the `index_manuscript_mei` command with the first command line argument being the source ID of the manuscript. Additional command line options can be found in that command's help text. Once this command has completed, the manuscript MEI has been indexed in Solr.
+
+Go to the Cantus Ultimus admin page and ensure that the "Neume Search" and "Pitch Search" plugins exist in the database. If they do not, simply create new plugins with those names. Then, find the manuscript whose MEI you are adding in the admin panel. On that manuscript's admin page, select either the "Neume Search" plugin (if the manuscript's neumes are unpitched) or both the "Neume Search" and "Pitch Search" plugin (if the manuscript's neumes are pitched). Save the manuscript form.
+
+When you navigate to that manuscript's detail view, OMR search should be available in the search panel.
+
 
 ## Manuscript Inventory
 

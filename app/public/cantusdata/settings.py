@@ -11,15 +11,14 @@ https://docs.djangoproject.com/en/dev/ref/settings/
 from pathlib import Path
 import os
 
-is_development = os.environ.get("APP_PORT") == "8000"
+is_development = os.environ.get("DEVELOPMENT") == "True"
 is_production = not is_development
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # See https://docs.djangoproject.com/en/dev/howto/deployment/checklist/
-with open("/etc/key.txt", "r") as f:
-    SECRET_KEY = f.read().strip()
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = is_development
@@ -47,9 +46,10 @@ INSTALLED_APPS = (
     "rest_framework",
     "rest_framework.authtoken",
     "cantusdata.CantusdataConfig",
-    "django_extensions",
-    "coverage",
 )
+
+if DEBUG:
+    INSTALLED_APPS += ("django_extensions",)
 
 MIDDLEWARE = (
     "django.middleware.security.SecurityMiddleware",  # Migration: + django 3.1
@@ -138,7 +138,7 @@ MEDIA_URL = "/media/"
 MEDIA_URL_NEUMEEDITOR = "/neumeeditor/media/"
 
 # This needs to be an absolute path to the file system location
-STATIC_ROOT = BASE_DIR / "cantusdata/static"
+STATIC_ROOT = BASE_DIR / "../static"
 MEDIA_ROOT = BASE_DIR / "media/"
 
 REST_FRAMEWORK = {
@@ -173,7 +173,7 @@ SECURE_HSTS_SECONDS = 86400
 SECURE_HSTS_INCLUDE_SUBDOMAINS = is_production
 SECURE_HSTS_PRELOAD = is_production
 
-CELERY_BROKER_URL = f"amqp://{os.environ['RABBIT_USER']}:{os.environ['RABBIT_PASSWORD']}@cantus-rabbitmq-1:5672/{os.environ['RABBIT_VHOST']}"
+CELERY_BROKER_URL = f"amqp://{os.environ.get('RABBIT_USER')}:{os.environ.get('RABBIT_PASSWORD')}@cantus-rabbitmq-1:5672/{os.environ.get('RABBIT_VHOST')}"
 CELERY_RESULT_BACKEND = "django-db"
 CELERY_RESULT_PERSISTENT = False
 CELERY_RESULT_EXTENDED = True
